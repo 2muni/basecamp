@@ -1,0 +1,12 @@
+[settings]
+lockfile = true
+# Shell startup and missing commands must not install or upgrade agents.
+not_found_auto_install = false
+
+[tools]
+codex = "latest"
+opencode = "latest"
+
+# Solely the runtime for the host-side Gemini CLI.
+node = "lts"
+"npm:@google/gemini-cli" = "latest"

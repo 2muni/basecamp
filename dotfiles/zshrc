@@ -1,0 +1,13 @@
+export PATH="$HOME/.local/bin:$PATH"
+
+if command -v brew >/dev/null 2>&1; then
+    export PATH="$(brew --prefix)/opt/make/libexec/gnubin:$PATH"
+fi
+
+if [[ -x "$HOME/.local/bin/mise" ]]; then
+    eval "$("$HOME/.local/bin/mise" activate zsh)"
+fi
+
+if [[ -f "$HOME/.zshrc.local" ]]; then
+    source "$HOME/.zshrc.local"
+fi
