@@ -3,10 +3,16 @@ lockfile = true
 # Shell startup and missing commands must not install or upgrade agents.
 not_found_auto_install = false
 
+# Agent versions are owned by mise.lock, including during interactive use.
+[env]
+AGY_CLI_DISABLE_AUTO_UPDATE = "true"
+
 [tools]
 codex = "latest"
 opencode = "latest"
 
-# Solely the runtime for the host-side Gemini CLI.
+# Google account authentication is supported through Antigravity CLI.
+antigravity-cli = "latest"
+
+# Host tooling runtime for npm/npx; project Node.js belongs in Foundry containers.
 node = "lts"
-"npm:@google/gemini-cli" = "latest"

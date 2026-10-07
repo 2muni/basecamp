@@ -1,177 +1,214 @@
 # Basecamp
 
-Reproducible macOS host environment for development tools, container runtimes,
-shell configuration, and AI coding agents.
-
-## Ownership
+Basecamp owns the macOS development host. Foundry owns project/container runtime.
+AI coding agents run on the host and are managed through mise.
 
 | Layer | Tools | Management |
 | --- | --- | --- |
-| Foundation | Git, GNU Make | Homebrew |
-| Foundation | mise | Official single-binary installer (`mise.run`) |
-| Agents | Codex, OpenCode, Gemini CLI | mise |
-| Editor | Visual Studio Code | Homebrew |
-| Container Runtime | OrbStack | Homebrew |
-| Agent Orchestrator | Orca IDE | Homebrew (`stablyai/orca` tap) |
+| Foundation | Git, GitHub CLI (`gh`) | MacPorts |
+| Foundation | Make | macOS `/usr/bin/make` |
+| Foundation | mise | Official `mise.run` installer |
+| Agents | Codex, OpenCode, Antigravity CLI (`agy`) | mise |
+| Host tooling | Node.js LTS, bundled npm and npx | mise |
+| Editor | Visual Studio Code | Official vendor distribution |
+| Container Runtime | OrbStack | Official vendor distribution |
+| Agent Orchestrator | Orca IDE | Official vendor distribution |
 
-mise installs and versions all agents; Orca orchestrates them. VS Code is an
-editor. Neither GUI application owns agent installation or project runtimes.
-Extensions are not synchronized. Node.js is installed through mise solely to
-execute host-side Gemini CLI; project Node.js remains inside project containers.
-
-`Brewfile` defines required native host infrastructure and applications.
-`mise.toml` defines host-side Agent policy; version-controlled `mise.lock` fixes
-the resolved Agent versions. mise's installer is part of bootstrap infrastructure.
-Basecamp defines development prerequisites, without inventorying the rest of the
-workstation. Homebrew packages and the mise manager binary are not version-locked.
+MacPorts manages Foundation CLI packages. mise manages all host-side AI coding
+agents and their execution dependencies. Native macOS applications use official
+vendor distributions. Project runtimes and dependencies remain inside
+Foundry/project containers. Host Node.js LTS provides npm and npx for host-side
+Agent and MCP tooling; project Node.js stays inside Foundry containers. npm and
+npx use the versions bundled with Node.js. Orca orchestrates agents and worktrees;
+mise owns agent versions.
+Orca's GitHub workflows share the host Git and GitHub CLI environment.
 
 ## Setup
 
-Start with macOS, Homebrew, Git, Make, and curl available. Basecamp does not
-bootstrap Homebrew. Apple's Make can run bootstrap; Homebrew GNU Make supplies
-an explicit modern implementation. The linked zshrc adds its `gnubin` directory
-to PATH ([Homebrew Make details](https://formulae.brew.sh/formula/make.html)).
+Install the [official MacPorts package](https://www.macports.org/install.php)
+for your macOS version, including its documented Command Line Tools prerequisites.
+Basecamp checks `command -v port` and fails early if MacPorts is missing; it never
+installs MacPorts itself. The standard prefix is `/opt/local`.
+
+Install these native applications in `/Applications` using the official signed
+vendor distributions. On the current Intel Mac, select the macOS Intel builds:
+
+- [Visual Studio Code](https://code.visualstudio.com/download): `Visual Studio Code.app`
+- [OrbStack](https://orbstack.dev/download): `OrbStack.app`
+- [Orca IDE](https://www.onorca.dev/download): `Orca.app`
+
+Use the normal vendor updater mechanisms. Basecamp declares, documents, and
+verifies applications; it does not download installers, mount DMGs, bypass
+Gatekeeper, or remove quarantine attributes. Open OrbStack and complete its
+first-launch setup before validation. A working alternative Docker-compatible
+backend is also accepted.
 
 ```sh
+export PATH="/opt/local/bin:/opt/local/sbin:$HOME/.local/bin:$PATH"
 git clone <repository-url> basecamp
 cd basecamp
-make bootstrap
+/usr/bin/make bootstrap
 ```
 
-Bootstrap installs missing requirements, in this order even with `make -j`:
+`make bootstrap` makes this Mac satisfy the declared requirements, in order even
+with `make -j`:
 
-1. Preflight prerequisites, managed binary path, and all configuration conflicts.
-2. `brew bundle install --no-upgrade --file=.../Brewfile`.
-3. Install the official mise binary at `~/.local/bin/mise` only if missing.
-4. Link global mise policy and lockfile, then install agents with `--locked`.
+1. Preflight macOS, MacPorts, installer prerequisites, manifest, and link conflicts.
+2. Verify active declared ports; install missing requirements with `sudo port install`.
+3. Install or verify `~/.local/bin/mise` using the official installer.
+4. Link global mise configuration and lockfile; install locked Agents.
 5. Link dotfiles.
-6. Prepare a functioning Docker backend, then run doctor.
+6. Run doctor.
 
-Runtime preparation accepts the active Docker backend if it is already working.
-Otherwise bootstrap opens OrbStack and waits for its Docker engine before selecting
-the `orbstack` context. Complete any first-launch prompts in the app while bootstrap
-waits (60 readiness checks, two seconds apart). Context selection happens only after
-the engine responds. Unreachable explicit `DOCKER_HOST` or `DOCKER_CONTEXT` overrides
-require manual resolution; bootstrap does not silently replace them. Startup or
-setup failure stops at runtime preparation, before doctor. It does not reset or
-migrate Docker data.
+Bootstrap installs missing requirements without upgrading all installed packages.
+Already active declared ports are reused without invoking `sudo` during installation.
+MacPorts resolves port dependencies. Run installation and update commands from an
+interactive terminal so `sudo` can request administrator authentication. No package
+cleanup runs automatically.
+Doctor does not launch apps or select Docker contexts. Start your chosen backend
+and resolve Docker environment overrides manually if validation fails.
 
-Bootstrap never runs an explicit package upgrade. Its Homebrew stage disables
-automatic metadata updates, installation upgrades, dependent repairs, and
-cleanup. Missing packages may still require their own dependencies or a source
-build if Homebrew offers no compatible bottle; mise itself uses official
-prebuilt binaries on both Intel and Apple Silicon, avoiding Homebrew's compiler
-build chain.
+The mise step follows the [official installer](https://mise.jdx.dev/installing-mise.html),
+equivalent to `curl -fsSL https://mise.run | sh`. It downloads to a temporary file
+first so download failures cannot be hidden by a pipeline. It selects
+`~/.local/bin/mise` and installs only if that binary is missing. An external mise
+is reported and left untouched. Invalid files or symlinks at the managed binary
+path require manual resolution.
 
-The mise step uses the [official installer](https://mise.jdx.dev/installing-mise.html),
-equivalent to `curl -fsSL https://mise.run | sh`. Basecamp downloads it to a
-temporary file before running it so a failed download cannot be hidden by a
-successful shell pipeline. It explicitly selects `~/.local/bin/mise`, verifies
-its version, and reuses an existing executable there without reinstalling it.
-An external mise on PATH is reported before installation and left untouched;
-it is not automatically uninstalled or upgraded. Invalid files or symlinks at
-the managed binary path cause preflight to fail for manual resolution.
+## Declared requirements
 
-Every installation failure identifies its stage: preflight, Homebrew, mise,
-Agents, dotfiles, or validation. A Homebrew failure triggers only this diagnostic:
-
-```sh
-brew bundle check --no-upgrade --verbose --file=./Brewfile
+```text
+Desired
+├── ports.txt       # manually requested Foundation ports: git and gh
+├── mise.toml       # Agent policy
+└── mise.lock       # resolved Agent versions
 ```
 
-Its output identifies requirements still missing; a failed Bundle transaction
-alone does not establish that every listed app is broken. There are no automatic
-retries, package repairs, removals, or Command Line Tools reinstalls.
+`ports.txt` accepts one plain port name per line, blank lines, and full-line `#`
+comments. Surrounding whitespace is ignored. Command fragments, options, variants,
+and inline comments are rejected before installation. Do not list transitive
+dependencies. Applications are documented requirements, not fake ports.
 
-## Global configuration and validation
+Normal Agent installation uses `mise install --locked`. Explicit updates use
+`mise lock --global --bump` followed by locked installation, as documented in
+[mise's lockfile guide](https://mise.jdx.dev/dev-tools/mise-lock.html).
+Agent versions change through explicit updates; normal installation honors the lockfile.
+The lockfile uses format version 3 and includes native macOS Intel and Apple
+Silicon artifacts. `mise.toml` sets `AGY_CLI_DISABLE_AUTO_UPDATE = "true"` so
+Antigravity CLI's [vendor self-updater](https://www.antigravity.google/docs/cli/troubleshooting/#resolve-self-updater-locks-and-failures)
+cannot change the managed binary in mise environments or activated shells.
+Doctor detects an Antigravity version mismatch. Restore a changed binary with
+`mise install --locked --force antigravity-cli`; use `make update` for version changes.
 
-Safe symlinks keep the repository authoritative:
+## Shell and configuration links
 
 ```text
 ~/.config/mise/config.toml -> basecamp/mise.toml
 ~/.config/mise/mise.lock   -> basecamp/mise.lock
+~/.zprofile               -> basecamp/dotfiles/zprofile
 ~/.zshrc                  -> basecamp/dotfiles/zshrc
 ~/.gitconfig              -> basecamp/dotfiles/gitconfig
 ```
 
-The config and lock are one logical pair; the global lock is never an independent
-copy. `XDG_CONFIG_HOME`, `MISE_CONFIG_DIR`, or `MISE_GLOBAL_CONFIG_FILE` can select
-a custom location. Existing unrelated files or symlinks, including dangling
-links, are never overwritten. Manually merge or remove conflicts before retrying.
-Correct links are accepted on repeated runs; keep the checkout at its linked path.
-For an existing `~/.zshrc` or `~/.gitconfig`, preserve its local settings in
-`~/.zshrc.local` or `~/.gitconfig.local` and manually move the original file before
-retrying. If a local file already exists, merge rather than overwrite it. Preflight
-checks these conflicts before any package installation.
-If an earlier zshrc exported `MISE_GLOBAL_CONFIG_FILE` to the repository itself,
-remove that export and unset the variable before bootstrap.
+`XDG_CONFIG_HOME`, `MISE_CONFIG_DIR`, or `MISE_GLOBAL_CONFIG_FILE` may select a
+custom mise configuration location. Both global files are symlinks to the
+checkout; keep it at that path.
 
-Open a new shell to activate `~/.local/bin/mise` directly. Agents are available
-from arbitrary directories; shell startup neither installs nor upgrades them.
-Project-local mise settings can override global selections. Bootstrap prepares
-the container runtime before validation. For subsequent read-only checks:
+`make link` checks every destination and reports all conflicts before creating
+any links. Existing files, unrelated symlinks, and dangling symlinks cause a clear failure. Manually merge
+or move conflicts; Basecamp never overwrites user files. Correct links succeed
+idempotently. Put private/machine shell settings in `~/.zshrc.local`, and Git
+identity or signing settings in `~/.gitconfig.local`. Merge existing local files
+rather than replacing them.
 
-```sh
-make doctor
-make macos   # optional: show extensions, Finder path bar and status bar
-```
+The login-shell `.zprofile` prepends `/opt/local/bin`, `/opt/local/sbin`, and
+`$HOME/.local/bin`, then exposes the VS Code application CLI when present.
+It also loads OrbStack CLI paths and completions when the vendor shell integration
+is installed.
+MacPorts Git and gh should resolve to `/opt/local/bin/git` and `/opt/local/bin/gh`.
+Apple Git at `/usr/bin/git` remains untouched as fallback. The interactive
+`.zshrc` activates the managed mise binary and sources `.zshrc.local`; it does not
+initialize MacPorts PATH. Open a new login shell after linking. Agents then work
+from arbitrary project directories, without installation or upgrades at startup.
+Project-local mise configuration may override global tools.
 
-Doctor reports Foundation, Agents, Applications, and Container Runtime separately.
-It checks the managed mise binary rather than an unrelated mise on PATH. VS Code
-GUI without `code` gets a warning; Orca is checked as `Orca.app`. Missing OrbStack
-is reported as a warning because a functioning alternative Docker backend is
-accepted. Compose v2 or later and `sha256sum` or `shasum` are required.
-A newer Command Line Tools warning is surfaced with macOS Software Update advice;
-no deletion or reinstall is performed. Doctor never installs tools, starts a
-runtime, or changes Docker contexts; bootstrap's preparation stage owns startup.
-Only `make macos` applies the declared preferences and restarts Finder.
+## Commands
 
-## Routine operation
+| Command | Behavior |
+| --- | --- |
+| `make bootstrap` | Install requirements, link dotfiles, then doctor |
+| `make install` | Preflight, install ports and mise, link global mise policy, install locked Agents |
+| `make link` | Safely link global mise policy/lock and all three dotfiles |
+| `make doctor` | Read-only host readiness checks |
+| `make update` | Explicit Foundation and Agent updates, then doctor |
+| `make macos` | Apply `macos.sh` Finder preferences and restart Finder |
 
-All agents share one management surface:
+Doctor groups output into Foundation, Agents, Applications, and Container Runtime.
+It reports resolved CLI paths and versions and warns on functioning alternative
+Foundation paths. MacPorts and the managed mise binary are required. GitHub CLI
+authentication remains user-owned: run `gh auth login` separately if needed.
+Basecamp never logs in or records credentials.
 
-```sh
-mise ls --global     # audit the Agent layer
-mise ls
-mise install        # install declared resolved tools
-mise upgrade        # explicitly upgrade agents together
-```
+Agent checks validate the installed binaries and versions, not authentication or
+provider account eligibility. Authenticate separately using a supported account.
+Google [ended Gemini CLI access for individual/free and Google AI Pro/Ultra accounts
+on June 18, 2026](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/).
+Basecamp therefore manages Antigravity CLI through mise instead of Gemini CLI.
+Open a new login shell and run `agy` in your project to sign in with Google.
+Authentication remains user-owned; Basecamp does not initiate sign-in or store
+credentials. Antigravity CLI is independent of the Antigravity desktop app, which
+is not a Basecamp requirement. See the [official CLI authentication guide](https://antigravity.google/docs/cli/install/).
+The old Gemini CLI is no longer declared, and its mise installation copies were
+removed during the explicit migration cleanup. Node.js is declared separately
+for host npm/npx tooling. Saved credentials and sessions remain user-owned;
+bootstrap and update do not perform automatic pruning or session cleanup.
 
-Use direct global maintenance from a directory without project mise settings,
-such as your home directory. No per-agent npm, Homebrew, or curl installer is
-required. The complete Basecamp version-changing workflow is:
+Doctor checks native bundles separately from the VS Code CLI; a missing
+`/usr/local/bin/code` symlink is not an error. It accepts the CLI inside the app.
+Missing OrbStack is a warning if another Docker backend works. An unreachable
+Docker daemon reports whether OrbStack is installed, and suggests checking its
+startup and the current backend. Docker CLI, `docker info`, Compose v2 or newer,
+Docker context, and a SHA-256 utility are checked. The `orbstack` context is
+preferred; another functioning backend is acceptable.
 
-```sh
-make update
-git diff
-```
+`make update` runs `sudo port selfupdate`, then `sudo port upgrade` for each port
+in `ports.txt`. It runs managed mise `self-update --yes --no-plugins`, refreshes
+the global Agent lock, installs locked versions, and runs doctor.
+Dependencies needed by declared ports may also change. Unrelated ports are not
+explicit upgrade targets. No global outdated-port upgrade, inactive-port removal,
+or reclaim operation runs. App updates remain vendor-owned. A failed stage stops
+the workflow. Review `git diff` yourself; Basecamp never commits or pushes.
 
-Update preflights configuration, requires the managed mise binary, updates
-Homebrew metadata and upgrades only Brewfile requirements with Bundle's
-`--upgrade` mode (including auto-updating casks). It then runs managed mise
-`self-update --yes --no-plugins`, `lock --global --bump`, `install --locked`, and
-doctor. It stops at a failed stage. Agent updates refresh the repository's
-global lockfile ([mise lockfile details](https://mise.jdx.dev/dev-tools/mise-lock.html)).
-Homebrew may update dependencies required by declared packages. Unlisted packages,
-including an old Homebrew mise, are not explicit upgrade targets. Cleanup and
-unrelated dependent repairs are disabled in both installation and update.
+Never track GitHub authentication, agent credentials or sessions, SSH private
+keys, or other secrets. Use local credential storage.
 
-`make install` runs the conservative installation stages without linking dotfiles
-or running doctor. `make link` safely links global mise policy, its lock, and
-dotfiles. Put local shell settings in `~/.zshrc.local` and Git identity/signing
-settings in `~/.gitconfig.local`. Use normal local credential storage. Never track
-credentials, agent sessions, history, or private keys. Basecamp never automatically
-commits or pushes changes.
+## Homebrew migration history and manual transition
 
-## Relationship with Foundry
+This section is the sole retained Homebrew migration note. Homebrew is no longer
+part of installation, PATH, or checks. Existing installations are
+never automatically uninstalled.
 
-Basecamp owns the Mac host: Foundation, Agents, Editor, Container Runtime, and
-Orchestrator. Foundry owns Dockerfiles, Compose, project commands, development
-conventions, and project containers: Node.js, Python, Ruby, Go, Java, dependencies,
-databases, services, build tools, and tests.
+1. Install the official MacPorts package.
+2. Put `/opt/local/bin` and `/opt/local/sbin` first in PATH.
+3. Install Foundation tools with `sudo port install git gh`.
+4. Verify `command -v git` is `/opt/local/bin/git` and `command -v gh` is `/opt/local/bin/gh`.
+5. Install/verify the managed mise binary.
+6. Install/verify Codex, OpenCode, and Antigravity CLI through locked mise configuration.
+7. Install the official Intel VS Code, OrbStack, and Orca applications.
+8. Run `make bootstrap` and `make doctor`; resolve reported issues.
+9. Only after verification, manually remove Homebrew if desired.
 
-Neither repository directly depends on the other. Foundry and its projects require
-only documented generic host capabilities such as Docker, Compose v2, Git, Make,
-and SHA-256 tooling. They require neither Basecamp nor OrbStack. Gemini's host
-Node.js is separate from container-owned project Node.js; agents use no
-OrbStack-specific APIs.
+Merge older shell configurations and remove their obsolete package-manager PATH
+setup manually before linking. Never delete `/usr/local` wholesale: it can hold
+unrelated user data.
+
+## Foundry boundary
+
+Basecamp and Foundry remain independent repositories. Foundry owns project
+language runtimes, dependencies, build/test tools, databases, and services inside
+containers. Its generic host requirements remain Docker-compatible runtime,
+Docker Compose v2, Git, Make, POSIX shell, and a SHA-256 utility.
+Foundry does not require MacPorts, Basecamp, OrbStack specifically, Orca IDE,
+Codex, OpenCode, or Antigravity CLI. Basecamp is one way to prepare a compatible host,
+not a runtime dependency of Foundry. Both Makefiles should remain compatible
+with macOS Make; no `gmake` dependency is introduced.

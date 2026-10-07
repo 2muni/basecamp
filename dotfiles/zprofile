@@ -1,0 +1,12 @@
+# Basecamp host PATH.
+export PATH="/opt/local/bin:/opt/local/sbin:$HOME/.local/bin:$PATH"
+
+VSCODE_BIN="/Applications/Visual Studio Code.app/Contents/Resources/app/bin"
+if [[ -d "$VSCODE_BIN" ]]; then
+    export PATH="$PATH:$VSCODE_BIN"
+fi
+
+# Optional vendor CLI paths and completions.
+if [[ -r "$HOME/.orbstack/shell/init.zsh" ]]; then
+    source "$HOME/.orbstack/shell/init.zsh"
+fi
